@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0f172a">
 <title>NFC Kopyalayıcı</title>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <style>
   :root {
     --bg: #f5f6f8; --card: #ffffff; --text: #0f172a; --muted: #64748b;
@@ -175,6 +176,9 @@
 
   <p class="muted" style="font-size:.8rem; text-align:center">
     Yazma işlemi hedef karttaki mevcut verinin üzerine yazar.
+  </p>
+  <p id="apkLink" class="muted" style="font-size:.85rem; text-align:center">
+    <a href="apk/" style="color:var(--accent)">Android uygulamasını indir (APK)</a>
   </p>
 </main>
 
@@ -600,6 +604,11 @@
     $('btnScan').disabled = true;
     $('btnManual').disabled = true;
   }
+  // Uygulama içinden (APK / ana ekran) açıldıysa indirme linkini gizle
+  const inApp = document.referrer.startsWith('android-app://') ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if (inApp) $('apkLink').classList.add('hidden');
+
   renderList();
 })();
 </script>

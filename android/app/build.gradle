@@ -1,0 +1,46 @@
+plugins {
+    id 'com.android.application'
+}
+
+def buildNumber = (System.getenv('VERSION_CODE') ?: '1') as Integer
+def keystorePath = System.getenv('KEYSTORE_PATH')
+
+android {
+    namespace 'io.github.deenizacar.nfccard'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'io.github.deenizacar.nfccard'
+        minSdk 26
+        targetSdk 35
+        versionCode buildNumber
+        versionName "1.0.${buildNumber}"
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystorePath ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

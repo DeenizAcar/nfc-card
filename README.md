@@ -21,13 +21,16 @@ Web NFC sadece **NDEF** verisiyle çalışır. Bu yüzden:
 
 ## Kullanım
 
-Web NFC yalnızca **Android + Chrome** ve **https** üzerinde çalışır. En kolay yol GitHub Pages:
+- **Web:** https://deenizacar.github.io/nfc-card/ — Android telefonda Chrome ile aç.
+- **APK:** https://deenizacar.github.io/nfc-card/apk/ — Android uygulaması olarak kur.
 
-1. Repo → **Settings → Pages** → Source: `Deploy from a branch`, Branch: `main` / `(root)`.
-2. Birkaç dakika sonra `https://<kullanıcı-adın>.github.io/nfc-card/` adresini telefonda Chrome ile aç.
-3. Chrome menüsünden **Ana ekrana ekle** ile uygulama gibi kullanabilirsin.
+Web NFC yalnızca **Android + Chrome** ve **https** üzerinde çalışır. APK, siteyi Chrome üzerinden
+açan bir Trusted Web Activity'dir; telefonda Chrome yüklü olmalı.
 
-> Not: Özel (private) repoda GitHub Pages için GitHub Pro gerekir. Kodda kişisel veri olmadığı için repo herkese açık
-> olsa da kayıtların görünmez — onlar sadece telefonunda durur.
+## Yayınlama
 
-Yerel test için bilgisayarda `npx serve` vb. çalıştırıp telefondan açmak işe yaramaz (http olduğu için); Pages ya da başka bir https barındırma kullan.
+`main`e her push'ta `.github/workflows/pages.yml` `android/` projesinden imzalı APK derler ve
+siteyi APK ile birlikte (`/apk/nfc-kopyalayici.apk`) GitHub Pages'e yükler.
+
+İmzalama için repo secret'ları: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`.
+Keystore repoda değil; kaybolursa yeni APK eskisinin üzerine kurulamaz (önce kaldırmak gerekir).
