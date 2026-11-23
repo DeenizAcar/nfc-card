@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>NFC Kopyalayıcı</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #0f172a; --muted: #64748b;
+    --line: #e2e8f0; --accent: #2563eb; --accent-text: #ffffff;
+    --ok: #16a34a; --warn: #b45309; --err: #dc2626; --chip: #eef2ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1120; --card: #111827; --text: #e5e7eb; --muted: #94a3b8;
+      --line: #1f2937; --accent: #3b82f6; --accent-text: #ffffff;
+      --ok: #22c55e; --warn: #f59e0b; --err: #f87171; --chip: #1e293b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 4px 0 2px; }
+  h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  .sub { color: var(--muted); margin: 0 0 16px; font-size: .92rem; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  .banner { border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; font-size: .92rem; }
+  .banner.warn { background: color-mix(in srgb, var(--warn) 15%, transparent); border: 1px solid var(--warn); }
+  button {
+    font: inherit; border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer;
+    background: var(--accent); color: var(--accent-text); font-weight: 600;
+  }
+  button.secondary { background: var(--chip); color: var(--text); font-weight: 500; }
+  button.danger { background: transparent; color: var(--err); border: 1px solid var(--line); font-weight: 500; }
+  button.small { padding: 8px 12px; font-size: .88rem; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .grow { flex: 1 1 auto; }
+  .big { width: 100%; padding: 16px; font-size: 1.05rem; }
+  input, select, textarea {
+    font: inherit; width: 100%; padding: 11px 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin: 10px 0 4px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .85rem; word-break: break-all; }
+  .muted { color: var(--muted); }
+  .rec { border-top: 1px dashed var(--line); padding: 8px 0; }
+  .rec:first-child { border-top: 0; }
+  .chip {
+    display: inline-block; background: var(--chip); border-radius: 999px;
+    padding: 2px 9px; font-size: .78rem; margin-right: 6px;
+  }
+  .item { border-top: 1px solid var(--line); padding: 12px 0; }
+  .item:first-of-type { border-top: 0; }
+  .item-name { font-weight: 600; }
+  .empty { color: var(--muted); text-align: center; padding: 18px 0; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+  .tabs button { flex: 1; }
+  .tabs button[aria-pressed="false"] { background: var(--chip); color: var(--text); font-weight: 500; }
+  .hidden { display: none !important; }
+
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10;
+  }
+  .sheet {
+    background: var(--card); border-radius: 18px; padding: 24px; max-width: 420px; width: 100%;
+    text-align: center; border: 1px solid var(--line);
+  }
+  .pulse {
+    width: 88px; height: 88px; border-radius: 50%; margin: 4px auto 16px;
+    background: var(--accent); opacity: .9; animation: pulse 1.4s ease-in-out infinite;
+    display: flex; align-items: center; justify-content: center; color: #fff; font-size: 2rem;
+  }
+  @keyframes pulse { 0%,100% { transform: scale(.88); opacity: .6; } 50% { transform: scale(1); opacity: 1; } }
+
+  #toast {
+    position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom));
+    transform: translateX(-50%); background: var(--text); color: var(--bg);
+    padding: 10px 16px; border-radius: 10px; font-size: .92rem; max-width: calc(100% - 32px);
+    opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<main>
+  <h1>NFC Kopyalayıcı</h1>
+  <p class="sub">Kartı oku, kaydet, başka bir karta yaz. Veriler sadece bu telefonda saklanır.</p>
+
+  <div id="unsupported" class="banner warn hidden">
+    <strong>Bu tarayıcı Web NFC desteklemiyor.</strong><br>
+    Android telefonda <b>Chrome</b> ile açman ve sayfanın <b>https://</b> üzerinden yüklenmesi gerekiyor.
+    Telefonun ayarlarından NFC'nin açık olduğundan da emin ol.
+  </div>
+
+  <!-- OKU -->
+  <section class="card">
+    <h2>1. Kartı oku</h2>
+    <button id="btnScan" class="big">Okumayı başlat</button>
+    <p id="scanHint" class="muted hidden" style="margin:10px 0 0">Kartı telefonun arkasına yaklaştır…</p>
+
+    <div id="lastRead" class="hidden" style="margin-top:14px">
+      <div class="row" style="justify-content:space-between">
+        <span class="muted">Okunan kart</span>
+        <span id="lastTime" class="muted" style="font-size:.85rem"></span>
+      </div>
+      <div style="margin:6px 0 10px"><span class="chip">UID</span><span id="lastUid" class="mono"></span></div>
+      <div id="lastRecords"></div>
+      <div id="noNdef" class="banner warn hidden" style="margin:10px 0 0">
+        Bu kartta okunabilir NDEF verisi yok. Muhtemelen şifreli bir kart (bina girişi, toplu taşıma kartı vb.)
+        ya da boş bir etiket. Telefonla yalnızca UID okunabilir; bu tür kartlar kopyalanamaz.
+      </div>
+      <label for="saveName">Kayıt adı</label>
+      <input id="saveName" placeholder="örn. Spor salonu etiketi">
+      <div class="row" style="margin-top:10px">
+        <button id="btnSave" class="grow">Kaydet</button>
+        <button id="btnCopyNow" class="secondary grow">Hemen başka karta yaz</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- KAYITLAR -->
+  <section class="card">
+    <div class="row" style="justify-content:space-between; margin-bottom:6px">
+      <h2 style="margin:0">2. Kayıtlı kartlar</h2>
+      <div class="row">
+        <button id="btnExport" class="secondary small">Dışa aktar</button>
+        <button id="btnImport" class="secondary small">İçe aktar</button>
+        <input id="fileImport" type="file" accept="application/json,.json" class="hidden">
+      </div>
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <!-- ELLE YAZ -->
+  <section class="card">
+    <h2>3. Elle yaz</h2>
+    <div class="tabs" role="group">
+      <button data-kind="url" aria-pressed="true" class="small">Link</button>
+      <button data-kind="text" aria-pressed="false" class="small">Metin</button>
+      <button data-kind="wifi" aria-pressed="false" class="small">Wi‑Fi</button>
+    </div>
+    <div data-pane="url">
+      <label for="inUrl">Adres</label>
+      <input id="inUrl" type="url" inputmode="url" placeholder="https://…">
+    </div>
+    <div data-pane="text" class="hidden">
+      <label for="inText">Metin</label>
+      <textarea id="inText" placeholder="Karta yazılacak metin"></textarea>
+    </div>
+    <div data-pane="wifi" class="hidden">
+      <label for="inSsid">Ağ adı (SSID)</label>
+      <input id="inSsid" autocomplete="off">
+      <label for="inPass">Şifre</label>
+      <input id="inPass" type="text" autocomplete="off">
+      <label for="inAuth">Güvenlik</label>
+      <select id="inAuth">
+        <option value="WPA2">WPA/WPA2/WPA3</option>
+        <option value="OPEN">Şifresiz</option>
+      </select>
+    </div>
+    <button id="btnManual" class="big" style="margin-top:12px">Karta yaz</button>
+  </section>
+
+  <p class="muted" style="font-size:.8rem; text-align:center">
+    Yazma işlemi hedef karttaki mevcut verinin üzerine yazar.
+  </p>
+</main>
+
+<!-- Yazma penceresi -->
+<div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
+  <div class="sheet">
+    <div class="pulse">⇣</div>
+    <h2 id="ovTitle">Hedef kartı yaklaştır</h2>
+    <p id="ovText" class="muted">Yazılacak kartı telefonun arkasına tut ve yazma bitene kadar çekme.</p>
+    <button id="ovCancel" class="secondary">İptal</button>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = (id) => document.getElementById(id);
+  const STORE_KEY = 'nfc-copier.items.v1';
+  const supported = 'NDEFReader' in window;
+
+  // ---------- yardımcılar ----------
+  function toast(msg, ms = 2600) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => t.classList.remove('show'), ms);
+  }
+  function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch {} }
+
+  function viewToBytes(view) {
+    return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  }
+  function bytesToB64(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+  function b64ToBytes(b64) {
+    const s = atob(b64 || '');
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+    return out;
+  }
+  function toHex(bytes, max = 48) {
+    const arr = Array.from(bytes.slice(0, max), (b) => b.toString(16).padStart(2, '0'));
+    return arr.join(' ') + (bytes.length > max ? ' …' : '');
+  }
+  function decode(bytes, enc = 'utf-8') {
+    try { return new TextDecoder(enc).decode(bytes); } catch { return new TextDecoder().decode(bytes); }
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function fmtDate(ts) {
+    try { return new Date(ts).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }); }
+    catch { return new Date(ts).toISOString(); }
+  }
+
+  // ---------- kayıt (localStorage) ----------
+  function loadItems() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch { return []; }
+  }
+  function saveItems(items) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(items)); return true; }
+    catch { toast('Kaydedilemedi: tarayıcı depolaması kullanılamıyor'); return false; }
+  }
+
+  // ---------- NDEF kayıtlarını JSON'a çevir / geri çevir ----------
+  const NESTED_TYPES = (t) => t === 'smart-poster' || t.startsWith(':') || t.includes(':');
+
+  function serializeRecord(r) {
+    const o = { recordType: r.recordType };
+    if (r.mediaType) o.mediaType = r.mediaType;
+    if (r.id) o.id = r.id;
+    if (r.encoding) o.encoding = r.encoding;
+    if (r.lang) o.lang = r.lang;
+    if (r.data) o.data = bytesToB64(viewToBytes(r.data));
+    if (NESTED_TYPES(r.recordType) && typeof r.toRecords === 'function') {
+      try {
+        const sub = r.toRecords();
+        if (sub && sub.length) o.records = sub.map(serializeRecord);
+      } catch { /* iç içe kayıt değil */ }
+    }
+    return o;
+  }
+
+  function toRecordInit(o) {
+    const init = { recordType: o.recordType };
+    if (o.id) init.id = o.id;
+    const bytes = b64ToBytes(o.data);
+    switch (o.recordType) {
+      case 'empty':
+        break;
+      case 'text':
+        init.data = decode(bytes, o.encoding || 'utf-8');
+        if (o.lang) init.lang = o.lang;
+        break;
+      case 'url':
+      case 'absolute-url':
+        init.data = decode(bytes);
+        break;
+      case 'mime':
+        init.mediaType = o.mediaType || 'application/octet-stream';
+        init.data = bytes;
+        break;
+      case 'smart-poster':
+        init.data = { records: (o.records || []).map(toRecordInit) };
+        break;
+      default:
+        // external (alan:tip), local (:tip) ve unknown kayıtlar ham baytlarla yazılır
+        init.data = (o.recordType.startsWith(':') && o.records)
+          ? { records: o.records.map(toRecordInit) }
+          : bytes;
+    }
+    return init;
+  }
+
+  function describeRecord(o) {
+    const bytes = b64ToBytes(o.data);
+    const type = o.recordType;
+    let label = type, body = '';
+    if (type === 'text') { label = 'Metin' + (o.lang ? ` (${o.lang})` : ''); body = esc(decode(bytes, o.encoding)); }
+    else if (type === 'url' || type === 'absolute-url') { label = 'Link'; body = esc(decode(bytes)); }
+    else if (type === 'mime') {
+      label = o.mediaType || 'mime';
+      if (o.mediaType === 'application/vnd.wfa.wsc') {
+        const w = parseWifi(bytes);
+        body = w ? `Wi‑Fi: <b>${esc(w.ssid)}</b>` : `<span class="mono">${toHex(bytes)}</span>`;
+      } else if (/^text\/|json|xml|vcard/i.test(o.mediaType || '')) body = esc(decode(bytes));
+      else body = `<span class="mono">${toHex(bytes)}</span>`;
+    }
+    else if (type === 'smart-poster') {
+      label = 'Smart poster';
+      body = (o.records || []).map((r) => describeRecord(r)).join('');
+    }
+    else if (type === 'empty') { label = 'Boş kayıt'; }
+    else { body = `<span class="mono">${toHex(bytes)}</span>`; }
+    return `<div class="rec"><span class="chip">${esc(label)}</span>${bytes.length ? `<span class="muted" style="font-size:.78rem">${bytes.length} bayt</span>` : ''}<div style="margin-top:4px">${body}</div></div>`;
+  }
+
+  // ---------- Wi‑Fi (WSC) ----------
+  function buildWifi(ssid, pass, auth) {
+    const enc = new TextEncoder();
+    const tlv = (type, val) => {
+      const out = new Uint8Array(4 + val.length);
+      out[0] = type >> 8; out[1] = type & 0xff;
+      out[2] = val.length >> 8; out[3] = val.length & 0xff;
+      out.set(val, 4);
+      return out;
+    };
+    const cat = (...parts) => {
+      const n = parts.reduce((a, p) => a + p.length, 0);
+      const out = new Uint8Array(n); let i = 0;
+      for (const p of parts) { out.set(p, i); i += p.length; }
+      return out;
+    };
+    const open = auth === 'OPEN';
+    const cred = cat(
+      tlv(0x1026, new Uint8Array([0x01])),                       // network index
+      tlv(0x1045, enc.encode(ssid)),                              // SSID
+      tlv(0x1003, new Uint8Array([0x00, open ? 0x01 : 0x20])),    // auth: open / WPA2-PSK
+      tlv(0x100F, new Uint8Array([0x00, open ? 0x01 : 0x08])),    // enc: none / AES
+      tlv(0x1027, enc.encode(open ? '' : pass)),                  // network key
+      tlv(0x1020, new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff, 0xff])) // MAC (broadcast)
+    );
+    return tlv(0x100E, cred);
+  }
+  function parseWifi(bytes) {
+    try {
+      const find = (buf, type) => {
+        for (let i = 0; i + 4 <= buf.length;) {
+          const t = (buf[i] << 8) | buf[i + 1], l = (buf[i + 2] << 8) | buf[i + 3];
+          if (t === type) return buf.slice(i + 4, i + 4 + l);
+          i += 4 + l;
+        }
+        return null;
+      };
+      const cred = find(bytes, 0x100E);
+      const ssid = cred && find(cred, 0x1045);
+      return ssid ? { ssid: decode(ssid) } : null;
+    } catch { return null; }
+  }
+
+  // ---------- NFC işlemleri ----------
+  let reader = null;
+  let scanCtl = null;
+  let writeCtl = null;
+  let lastCard = null;
+
+  function getReader() {
+    if (!reader) reader = new NDEFReader();
+    return reader;
+  }
+
+  function errText(e) {
+    if (!e) return 'Bilinmeyen hata';
+    if (e.name === 'NotAllowedError') return 'NFC izni verilmedi. Site ayarlarından NFC iznini aç.';
+    if (e.name === 'NotSupportedError') return 'Bu cihazda NFC kullanılamıyor ya da kapalı.';
+    if (e.name === 'NotReadableError') return 'NFC şu an kullanılamıyor. NFC açık mı?';
+    if (e.name === 'NetworkError') return 'Kart okunamadı/yazılamadı. Kartı sabit tutup tekrar dene.';
+    if (e.name === 'AbortError') return 'İptal edildi';
+    return e.message || String(e);
+  }
+
+  async function startScan() {
+    if (scanCtl) { stopScan(); return; }
+    const ndef = getReader();
+    scanCtl = new AbortController();
+    try {
+      await ndef.scan({ signal: scanCtl.signal });
+    } catch (e) {
+      scanCtl = null;
+      toast(errText(e), 4000);
+      return;
+    }
+    $('btnScan').textContent = 'Okumayı durdur';
+    $('scanHint').classList.remove('hidden');
+    ndef.onreading = onReading;
+    ndef.onreadingerror = () => toast('Kart okunamadı. Tekrar yaklaştır.');
+  }
+
+  function stopScan() {
+    if (scanCtl) { scanCtl.abort(); scanCtl = null; }
+    if (reader) { reader.onreading = null; reader.onreadingerror = null; }
+    $('btnScan').textContent = 'Okumayı başlat';
+    $('scanHint').classList.add('hidden');
+  }
+
+  function onReading(ev) {
+    if (writeCtl) return; // yazma sırasında gelen okumaları yok say
+    const records = Array.from(ev.message.records || [], serializeRecord);
+    lastCard = { uid: ev.serialNumber || '', records, readAt: Date.now() };
+    buzz(60);
+    renderLast();
+    toast(records.length ? `Kart okundu (${records.length} kayıt)` : 'Kart okundu — NDEF verisi yok');
+  }
+
+  function renderLast() {
+    if (!lastCard) return;
+    $('lastRead').classList.remove('hidden');
+    $('lastUid').textContent = lastCard.uid || '(UID gizli)';
+    $('lastTime').textContent = fmtDate(lastCard.readAt);
+    $('lastRecords').innerHTML = lastCard.records.map(describeRecord).join('');
+    const has = lastCard.records.length > 0;
+    $('noNdef').classList.toggle('hidden', has);
+    $('btnCopyNow').disabled = !has;
+  }
+
+  async function writeRecords(records, title) {
+    if (!supported) { toast('Bu tarayıcı Web NFC desteklemiyor'); return false; }
+    if (!records || !records.length) { toast('Yazılacak veri yok'); return false; }
+
+    let message;
+    try { message = { records: records.map(toRecordInit) }; }
+    catch (e) { toast('Veri hazırlanamadı: ' + errText(e), 4000); return false; }
+
+    const wasScanning = !!scanCtl;
+    stopScan();
+
+    writeCtl = new AbortController();
+    $('ovTitle').textContent = title || 'Hedef kartı yaklaştır';
+    $('overlay').classList.remove('hidden');
+    let ok = false;
+    try {
+      await getReader().write(message, { overwrite: true, signal: writeCtl.signal });
+      ok = true;
+      buzz([60, 60, 60]);
+      toast('Karta yazıldı ✓');
+    } catch (e) {
+      if (e.name !== 'AbortError') toast('Yazma başarısız: ' + errText(e), 4500);
+    } finally {
+      writeCtl = null;
+      $('overlay').classList.add('hidden');
+      if (wasScanning) startScan();
+    }
+    return ok;
+  }
+
+  // ---------- kayıt listesi ----------
+  function renderList() {
+    const items = loadItems();
+    const el = $('list');
+    if (!items.length) {
+      el.innerHTML = '<div class="empty">Henüz kayıt yok. Bir kart okuyup kaydet.</div>';
+      return;
+    }
+    el.innerHTML = items.map((it) => `
+      <div class="item" data-id="${esc(it.id)}">
+        <div class="row" style="justify-content:space-between">
+          <span class="item-name">${esc(it.name)}</span>
+          <span class="muted" style="font-size:.8rem">${fmtDate(it.savedAt)}</span>
+        </div>
+        <div class="muted mono" style="margin:2px 0 6px">UID ${esc(it.uid || '—')} · ${it.records.length} kayıt</div>
+        <details>
+          <summary class="muted" style="font-size:.88rem; cursor:pointer">İçerik</summary>
+          <div style="margin-top:6px">${it.records.length ? it.records.map(describeRecord).join('') : '<span class="muted">NDEF verisi yok</span>'}</div>
+        </details>
+        <div class="row" style="margin-top:8px">
+          <button class="small" data-act="write" ${it.records.length ? '' : 'disabled'}>Karta yaz</button>
+          <button class="secondary small" data-act="rename">Yeniden adlandır</button>
+          <button class="danger small" data-act="delete">Sil</button>
+        </div>
+      </div>`).join('');
+  }
+
+  $('list').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const id = btn.closest('.item').dataset.id;
+    const items = loadItems();
+    const it = items.find((x) => x.id === id);
+    if (!it) return;
+    const act = btn.dataset.act;
+    if (act === 'write') {
+      await writeRecords(it.records, `"${it.name}" yazılıyor`);
+    } else if (act === 'rename') {
+      const name = prompt('Yeni ad', it.name);
+      if (name && name.trim()) { it.name = name.trim(); saveItems(items); renderList(); }
+    } else if (act === 'delete') {
+      if (confirm(`"${it.name}" silinsin mi?`)) {
+        saveItems(items.filter((x) => x.id !== id));
+        renderList();
+      }
+    }
+  });
+
+  $('btnSave').addEventListener('click', () => {
+    if (!lastCard) return;
+    const items = loadItems();
+    const name = $('saveName').value.trim() || `Kart ${items.length + 1}`;
+    items.unshift({
+      id: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()),
+      name, uid: lastCard.uid, savedAt: Date.now(), records: lastCard.records,
+    });
+    if (saveItems(items)) {
+      $('saveName').value = '';
+      renderList();
+      toast('Kaydedildi');
+    }
+  });
+
+  $('btnCopyNow').addEventListener('click', () => {
+    if (lastCard) writeRecords(lastCard.records, 'Kopyalanacak kartı yaklaştır');
+  });
+
+  // ---------- dışa / içe aktar ----------
+  $('btnExport').addEventListener('click', () => {
+    const items = loadItems();
+    if (!items.length) { toast('Dışa aktarılacak kayıt yok'); return; }
+    const blob = new Blob([JSON.stringify({ app: 'nfc-copier', version: 1, items }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `nfc-kayitlar-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  $('btnImport').addEventListener('click', () => $('fileImport').click());
+  $('fileImport').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const incoming = Array.isArray(data) ? data : data.items;
+      if (!Array.isArray(incoming)) throw new Error('format');
+      const items = loadItems();
+      const ids = new Set(items.map((x) => x.id));
+      let added = 0;
+      for (const it of incoming) {
+        if (!it || !Array.isArray(it.records) || ids.has(it.id)) continue;
+        items.push({
+          id: it.id || String(Date.now() + added), name: String(it.name || 'İçe aktarılan'),
+          uid: String(it.uid || ''), savedAt: it.savedAt || Date.now(), records: it.records,
+        });
+        added++;
+      }
+      saveItems(items); renderList();
+      toast(`${added} kayıt içe aktarıldı`);
+    } catch { toast('Dosya okunamadı (geçersiz JSON)'); }
+  });
+
+  // ---------- elle yazma ----------
+  let manualKind = 'url';
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+    manualKind = b.dataset.kind;
+    document.querySelectorAll('.tabs button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    document.querySelectorAll('[data-pane]').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== manualKind));
+  }));
+
+  $('btnManual').addEventListener('click', () => {
+    const enc = new TextEncoder();
+    let rec;
+    if (manualKind === 'url') {
+      let u = $('inUrl').value.trim();
+      if (!u) return toast('Adres gir');
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = 'https://' + u;
+      rec = { recordType: 'url', data: bytesToB64(enc.encode(u)) };
+    } else if (manualKind === 'text') {
+      const t = $('inText').value;
+      if (!t) return toast('Metin gir');
+      rec = { recordType: 'text', lang: 'tr', data: bytesToB64(enc.encode(t)) };
+    } else {
+      const ssid = $('inSsid').value;
+      if (!ssid) return toast('Ağ adını gir');
+      rec = { recordType: 'mime', mediaType: 'application/vnd.wfa.wsc',
+              data: bytesToB64(buildWifi(ssid, $('inPass').value, $('inAuth').value)) };
+    }
+    writeRecords([rec]);
+  });
+
+  // ---------- başlangıç ----------
+  $('overlay').addEventListener('click', (e) => { if (e.target.id === 'overlay') writeCtl && writeCtl.abort(); });
+  $('ovCancel').addEventListener('click', () => writeCtl && writeCtl.abort());
+  $('btnScan').addEventListener('click', startScan);
+
+  if (!supported) {
+    $('unsupported').classList.remove('hidden');
+    $('btnScan').disabled = true;
+    $('btnManual').disabled = true;
+  }
+  renderList();
+})();
+</script>
+</body>
+</html>
